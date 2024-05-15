@@ -1,0 +1,71 @@
+-- Trigger na tabela usuario
+CREATE OR REPLACE FUNCTION calcular_bonus_usuario()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO contra_cheque (matricula, bonus, pessoa, data_pagamento)
+  VALUES (NEW.matricula, calcular_bonus(NEW.matricula), 'Física', CURRENT_DATE);
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER calcular_bonus_usuario_trigger
+AFTER INSERT ON usuario
+FOR EACH ROW
+EXECUTE FUNCTION calcular_bonus_usuario();
+
+-- Trigger na tabela funcionario
+CREATE OR REPLACE FUNCTION calcular_salario_funcionario()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    INSERT INTO contra_cheque (matricula, bonus, pessoa, data_pagamento)
+    VALUES (NEW.matricula, calcular_bonus(NEW.matricula), 'Física', CURRENT_DATE);
+  ELSIF TG_OP = 'UPDATE' THEN
+    IF NEW.data_demissao IS NOT NULL THEN
+      UPDATE contra_cheque SET desconto = calcular_salario_total(NEW.matricula) * 0.20, razao_desconto = 'Desconto por demissão' WHERE matricula = NEW.matricula;
+    ELSE
+      UPDATE contra_cheque SET desconto = 0, razao_desconto = NULL WHERE matricula = NEW.matricula;
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER calcular_salario_funcionario_trigger
+AFTER INSERT OR UPDATE OF data_demissao ON funcionario
+FOR EACH ROW
+EXECUTE FUNCTION calcular_salario_funcionario();
+
+-- Trigger na tabela ferias
+CREATE OR REPLACE FUNCTION calcular_tempo_servico_ferias()
+RETURNS TRIGGER AS $$
+BEGIN
+  UPDATE ferias SET anos_servico = calcular_tempo_servico(NEW.matricula) WHERE id_ferias = NEW.id_ferias;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER calcular_tempo_servico_ferias_trigger
+AFTER INSERT ON ferias
+FOR EACH ROW
+EXECUTE FUNCTION calcular_tempo_servico_ferias();
+
+-- Trigger na tabela registro_horas
+CREATE OR REPLACE FUNCTION calcular_horas_extras_registro()
+RETURNS TRIGGER AS $$
+DECLARE
+  horas_extras float;
+BEGIN
+  horas_extras := calcular_horas_extras(NEW.matricula);
+  IF horas_extras > 0 THEN
+    INSERT INTO contra_cheque (matricula, bonus, pessoa, data_pagamento)
+    VALUES (NEW.matricula, horas_extras, 'Física', CURRENT_DATE);
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER calcular_horas_extras_registro_trigger
+AFTER INSERT ON registro_horas
+FOR EACH ROW
+EXECUTE FUNCTION calcular_horas_extras_registro();
